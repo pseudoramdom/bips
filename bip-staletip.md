@@ -37,8 +37,9 @@ policy between mining pools, because the contents of stale blocks tend to show
 how similar or different the mining pools' mempools were when the blocks were
 found.
 
-These benefits are not essential to the operation of the Bitcoin network,
-so this is proposed as an optional feature, with low performance demands.
+These benefits are not essential to the operation of the Bitcoin network, so
+this is proposed as an optional feature, with low performance demands and strict
+resource limits.
 
 ## Specification
 
@@ -50,6 +51,28 @@ For the purposes of this document, "active chain" means the chain that a node
 has selected as its current best chain. A "stale branch" is a sequence of valid
 headers that descends from a known block but whose tip is not on the node's
 active chain. The "stale tip" is the last header in that branch.
+
+### Protocol Constants
+
+Implementations of this BIP use the following limits unless otherwise noted:
+
+| Name | Value | Meaning |
+| ---- | ----- | ------- |
+| `MAX_STALETIP_HEADERS` | 20 | Recommended maximum number of `CompressedHeader` entries in one `staletip` message |
+| `STALETIP_RECENT_WINDOW` | 1000 blocks | Recommended maximum distance from the receiver's active tip |
+| `MAX_RETAINED_STALETIPS` | 10 | Recommended maximum number of stale tips retained for later relay |
+
+`MAX_STALETIP_HEADERS` is a resource-management limit[^rat-maxforklen]. The
+value of 20 is intended to cover the short stale branches useful for reorg
+detection while avoiding long-term tracking of persistent chain splits.
+
+`STALETIP_RECENT_WINDOW` is a resource-management limit[^rat-maxheight]. The
+1000-block window is about seven days and balances limiting resource usage with
+allowing stale tips to propagate. `MAX_RETAINED_STALETIPS` is also a
+resource-management limit[^rat-denialofservice]. Retaining up to 10 stale tips,
+combined with the 20-header branch limit, keeps relaying all known stale tips to
+a new peer under 10kB. Implementations MAY use stricter limits and SHOULD NOT
+punish peers solely for sending stale tips outside local policy limits.
 
 ### Staletip Feature Definition
 
@@ -115,11 +138,12 @@ stale branch diverges from the receiver's active chain. It MAY be a later known
 stale-branch header if both peers are expected to already know that header; in
 that case the `headers` vector only contains the unknown suffix.
 
-Vector serialization is as normal -- encode the length of the vector
-as a 1, 3, 5 or 9 byte `CompactSize`, then encode each member of the
-vector. Only minimally-encoded `CompactSize` values are supported. The
-`bool` serialization is a single byte `\x00` for false, and a single byte
-`\x01` for true.
+The `headers` vector is serialized as normal: encode the length of the vector as
+a 1, 3, 5 or 9 byte `CompactSize`, then encode each member of the vector. Only
+minimally-encoded `CompactSize` values are supported.
+
+The `bool` serialization is a single byte `\x00` for false, and a single byte
+`\x01` for true. Other encodings are malformed.
 
 The `headers` field is ordered from oldest (the header immediately following
 `fork_point`) to newest (the stale tip itself).
@@ -173,10 +197,12 @@ recent stale tips they are aware of. If so,
 - Nodes MAY choose a `fork_point` based on their own active chain,
   even if that results in the `headers` vector repeating some headers
   that the peer already knows.
-- Nodes SHOULD limit the number of stale tips they advertise, and in particular
-  SHOULD NOT advertise stale tips that are not recent[^rat-maxheight],
-  that diverge significantly from the active tip[^rat-maxforklen], or
-  that do not meet minimum proof-of-work thresholds[^rat-denialofservice].
+- Nodes SHOULD NOT advertise stale tips whose tip height is more than
+  `STALETIP_RECENT_WINDOW` blocks behind the sender's active tip.
+- Nodes SHOULD NOT advertise stale branches longer than `MAX_STALETIP_HEADERS`
+  headers.
+- Nodes SHOULD apply proof-of-work or chainwork thresholds sufficient to avoid
+  using this message as a low-cost spam channel[^rat-denialofservice].
 - Nodes SHOULD avoid advertising the same tip to the same peer repeatedly
   via multiple `staletip` messages.
   - As a consequence, nodes SHOULD respect the `prefers_blocks` setting.
@@ -196,25 +222,31 @@ recent stale tips they are aware of. If so,
 Nodes implementing this BIP MAY process `staletip` messages from peers
 to gain more knowledge about stale tips. If so,
 
+- Nodes SHOULD reject messages whose payload cannot be parsed exactly as a
+  `staletip` payload, including non-minimally encoded `CompactSize` values,
+  truncated data, invalid boolean values, or trailing bytes. Nodes MAY
+  disconnect peers for malformed payloads.
 - Nodes SHOULD reject (ignore) `staletip` messages where the `fork_point` is
   not known, and MAY disconnect the sending peer if this occurs. (Note
   that it was specified above that the sending peer MUST be sure the
   receiver knows the `fork_point` block before sending a `staletip`
   message).
-- Nodes SHOULD reject `staletip` messages when the `headers` vector
-  is empty, and MAY disconnect the sending peer if this occurs.
-- When processing a `staletip` message, nodes MUST ensure that a
-  denial of service vector[^rat-denialofservice] is not created. One way
-  of achieving this is to mirror the checks applied to the content of
-  the `headers` message. However it is also possible to be more strict,
-  requiring that:
-   * the `fork_point` is a recent block[^rat-maxheight]
-   * the number of entries in `headers` is small[^rat-maxforklen], and,
-   * that the headers meet minimum proof-of-work thresholds[^rat-denialofservice].
-- Nodes MAY ignore messages that violate denial of service checks, or MAY
-  partially process headers until the limits are reached. Nodes SHOULD
-  NOT disconnect or otherwise punish peers that send a message that
-  exceeds the denial of service limits.
+- Nodes SHOULD reject messages where the `headers` vector is empty, and MAY
+  disconnect the sending peer if this occurs.
+- When processing a `staletip` message, nodes MUST bound the resources they
+  devote to it so that a denial-of-service vector is not
+  created[^rat-denialofservice]. Enforcing the `MAX_STALETIP_HEADERS`,
+  `STALETIP_RECENT_WINDOW`, and `MAX_RETAINED_STALETIPS` limits is one way to
+  satisfy this requirement; nodes MAY apply stricter limits.
+- Nodes MAY ignore messages where the `headers` vector contains more than
+  `MAX_STALETIP_HEADERS` entries, or MAY partially process headers until local
+  limits are reached.
+- Nodes SHOULD ignore messages whose stale tip is not recent according to local
+  policy, for example more than `STALETIP_RECENT_WINDOW` blocks behind the
+  receiver's active tip.
+- Nodes MAY ignore messages that violate local denial-of-service checks, or MAY
+  partially process headers until local limits are reached. Nodes SHOULD NOT
+  disconnect or otherwise punish peers solely for exceeding local policy limits.
 - After receiving a `staletip` message that passes any denial of
   service checks, nodes SHOULD reconstruct the block headers from the
   `CompressedHeader` encoding, validate the headers, and add any new
@@ -530,9 +562,11 @@ This BIP is licensed under the 3-clause BSD license.
     chain splits.
 
 [^rat-denialofservice]: Limiting stale branches to 20 headers bounds the
-    per-message size to under 1kB. Combining this with a limit of 10 tracked
-    stale tips, this ensures that total bandwidth when relaying all known
-    stale tips to a new peer is under 10kB.
+    per-message size to under 1kB. Combining this with a default limit of 10
+    tracked stale tips ensures that total bandwidth when relaying all known
+    stale tips to a new peer is under 10kB. Restricting relay to recent tips
+    whose proof of work is comparable to the active chain makes stale-tip spam
+    costly on mainnet.
 
 [^rat-ignoreinvalid]: Ignoring rather than punishing allows nodes to apply
     different limits for what stale tips they accept. If one node
