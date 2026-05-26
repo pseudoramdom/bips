@@ -12,31 +12,30 @@
 
 ## Abstract
 
-Bitcoin miners sporadically produce stale blocks (that is, new blocks that
-don't improve on the cumulative proof of work of the current tip). This
-BIP defines a peer-to-peer (P2P) message that can be used to announce
-recent stale block headers (and the availability of the transaction
-content of those stale blocks) to peers.
+Bitcoin miners sporadically produce stale blocks: valid blocks or valid block
+headers that do not become part of the node's active chain. This BIP defines an
+optional peer-to-peer (P2P) feature for announcing recent stale chain tips to
+peers. The announcement includes the stale branch headers and whether the sender
+is willing to serve the corresponding tip block data.
 
 ## Motivation
 
-Being aware of stale blocks can be useful in ensuring the health of the
-Bitcoin network.
+Being aware of stale blocks can be useful in ensuring the health of the Bitcoin
+network.
 
-The most immediate and practical benefit is that when there is a stale
-block with the same cumulative proof of work as the current active tip,
-there is the potential for the current active tip to be reorged
-out in favour of a child of the stale block. In this case, having the
-stale block already downloaded (and possibly already validated) will
+The most immediate and practical benefit is that when there is a stale block
+with the same cumulative proof of work as the current active tip, there is the
+potential for the current active tip to be reorged out in favour of a child of
+the stale block. In this case, having the stale branch already downloaded will
 make dealing with the reorg faster.
 
-A more long term benefit of tracking stale blocks is that it allows for
-an indirect measurement of the efficiency with which miners are able to
-update to a new tip (in that slower updates to new tips will result in
-more stale blocks), and a measure of the differences in block creation
-policy between mining pools (in that the contents of stale blocks will
-tend to show how similar or different the mining pools' mempools are at
-the point in time that the blocks were found).
+A more long term benefit of tracking stale blocks is that it allows for an
+indirect measurement of the efficiency with which miners are able to update to a
+new tip. Slower updates to new tips will result in more stale blocks. If block
+data is available, it also permits measurement of differences in block creation
+policy between mining pools, because the contents of stale blocks tend to show
+how similar or different the mining pools' mempools were when the blocks were
+found.
 
 These benefits are not essential to the operation of the Bitcoin network,
 so this is proposed as an optional feature, with low performance demands.
@@ -44,8 +43,13 @@ so this is proposed as an optional feature, with low performance demands.
 ## Specification
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHOULD", "SHOULD NOT",
-"RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
-interpreted as described in RFC 2119.
+"RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as
+described in RFC 2119.
+
+For the purposes of this document, "active chain" means the chain that a node
+has selected as its current best chain. A "stale branch" is a sequence of valid
+headers that descends from a known block but whose tip is not on the node's
+active chain. The "stale tip" is the last header in that branch.
 
 ### Staletip Feature Definition
 
@@ -61,16 +65,22 @@ or just the header information (when `false`, encoded as `\x00`). For
 future compatibility, nodes SHOULD ignore any additional feature data
 that may be provided.
 
-### The `staletip` message
+### The `staletip` Message
 
-The `staletip` message is defined as a message with the ASCII message type
-`staletip` and a payload of:
+The `staletip` message is a post-handshake P2P message with the ASCII message
+type `staletip` and the following payload:
 
-| Type      | Name         | Description |
-| --------- | ------------ | ----------- |
-| `uint256` | `fork_point` | The hash of the block where the stale chain forks from the active chain |
-| vector of `CompressedHeader` | `headers` | The headers after the fork point up to the tip |
-| `bool`    | `have_block` | Whether the sender has the transaction data for the tip |
+| Type | Name | Description |
+| ---- | ---- | ----------- |
+| `uint256` | `fork_point` | The block hash used as the previous block hash of the first compressed header |
+| vector of `CompressedHeader` | `headers` | The stale branch headers after `fork_point`, ordered from oldest to newest |
+| `bool` | `have_block` | Whether the sender is willing to serve block data for the stale tip |
+
+The `fork_point` MUST be known by the receiver and MUST be the predecessor of
+the first reconstructed header. In the common case it is the block where the
+stale branch diverges from the receiver's active chain. It MAY be a later known
+stale-branch header if both peers are expected to already know that header; in
+that case the `headers` vector only contains the unknown suffix.
 
 Vector serialization is as normal -- encode the length of the vector
 as a 1, 3, 5 or 9 byte `CompactSize`, then encode each member of the
@@ -78,25 +88,33 @@ vector. Only minimally-encoded `CompactSize` values are supported. The
 `bool` serialization is a single byte `\x00` for false, and a single byte
 `\x01` for true.
 
-The `headers` field is ordered from oldest (the header immediately
-following the fork point) to newest (the stale tip itself).
+The `headers` field is ordered from oldest (the header immediately following
+`fork_point`) to newest (the stale tip itself).
 
-Because stale tips are very rare, this BIP does not reserve a 1-byte
-[BIP 324][BIP324] message type ID for the `staletip` message.
+`have_block` set to `true` means the sender currently has, and is willing to
+serve through normal block download mechanisms, the full block data for the
+stale tip, which is the final header in this `staletip` message. `have_block`
+set to `false` makes no claim about stale-tip block-data availability. A sender
+SHOULD NOT set `have_block` to `true` unless it expects a request for that block
+to succeed.
+
+Because stale tips are very rare, this BIP does not reserve a 1-byte [BIP
+324][BIP324] message type ID for the `staletip` message.
 
 #### `CompressedHeader` Format
 
-The `CompressedHeader` is a 48 byte structure equivalent to
-regular block header serialization, that omits the previous block's
-hash[^rat-compressedheader]. That is:
+The `CompressedHeader` is a 48 byte structure equivalent to regular block header
+serialization, but omits the previous block's hash[^rat-compressedheader]. The
+fields are serialized exactly as the corresponding fields are serialized in a
+Bitcoin block header:
 
-| Size | Name          | Type       | Description |
-| ---- | ------------- | ---------- | ----------- |
-|    4 | `version`     | `int32_t`  | Block version information
-|   32 | `merkle_root` | `uint256`  | The Merkle root of the block's transactions
-|    4 | `time`        | `uint32_t` | The block's timestamp
-|    4 | `bits`        | `uint32_t` | The calculated difficulty target being used for this block
-|    4 | `nonce`       | `uint32_t` | The nonce used to generate this block
+| Size | Name | Type | Description |
+| ---- | ---- | ---- | ----------- |
+| 4 | `version` | `int32_t` | Block version information |
+| 32 | `merkle_root` | `uint256` | The Merkle root of the block's transactions |
+| 4 | `time` | `uint32_t` | The block's timestamp |
+| 4 | `bits` | `uint32_t` | The calculated difficulty target being used for this block |
+| 4 | `nonce` | `uint32_t` | The nonce used to generate this block |
 
 ### Sending `staletip` messages
 
@@ -197,7 +215,7 @@ Nodes implementing this BIP SHOULD always announce their new active tip
 to all peers. To minimise additional bandwidth, they MAY do so via an
 `inv` message (rather than a `headers` or compact block message), however.
 
-#### Reconstructing headers
+#### Reconstructing Headers
 
 Headers may be reconstructed from a `staletip` message via the following
 algorithm:
@@ -218,8 +236,8 @@ algorithm:
     }
 ```
 
-Note that headers are reconstructed in order, from oldest (closest to
-the fork point), to newest (the stale tip itself).
+Note that headers are reconstructed in order, from oldest (closest to the
+`fork_point`) to newest (the stale tip itself).
 
 ### Optionality
 
