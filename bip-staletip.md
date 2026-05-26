@@ -53,17 +53,50 @@ active chain. The "stale tip" is the last header in that branch.
 
 ### Staletip Feature Definition
 
-This BIP defines a new [BIP 434][BIP434] feature id ("the `staletip`
-feature"):
+This BIP defines a new [BIP 434][BIP434] feature id ("the `staletip` feature"):
 
  * `https://github.com/ajtowns/bitcoin/tree/202601-staletips`
 
-The `staletip` feature data is a boolean, `prefers_blocks`, indicating
-whether the node advertising the feature prefers to collect the full
-block data associated with a stale tip (when `true`, encoded as `\x01`),
-or just the header information (when `false`, encoded as `\x00`). For
-future compatibility, nodes SHOULD ignore any additional feature data
-that may be provided.
+If this specification is assigned a BIP number, the feature id SHOULD be updated
+to a BIP-number based identifier as recommended by BIP 434, for example
+`BIPxxx` or `BIPxxxv1`.
+
+The `staletip` feature data MUST contain at least one byte. The first byte is a
+boolean, `prefers_blocks`, indicating whether the node advertising the feature
+prefers to collect the full block data associated with stale tips:
+
+ * `\x00`: the node prefers header-only announcements and does not request that
+   announcements be delayed until block data is available.
+ * `\x01`: the node prefers announcements that include availability of block
+   data where practical.
+
+Nodes receiving an empty `staletip` feature data field, or a first byte other
+than `\x00` or `\x01`, MUST ignore that peer's `staletip` feature
+advertisement. They SHOULD NOT disconnect solely because the feature data is not
+understood.
+
+For future compatibility, nodes SHOULD ignore any additional feature data bytes
+after the first byte.
+
+### BIP 434 Negotiation
+
+Nodes implementing this BIP MUST use BIP 434 to negotiate support before
+sending any `staletip` messages.
+
+Nodes MUST NOT send a `staletip` message to a peer unless that peer advertised a
+valid `staletip` feature during BIP 434 feature negotiation. Nodes SHOULD ignore
+`staletip` messages received from peers that did not advertise a valid
+`staletip` feature. Nodes MAY disconnect peers that repeatedly send such
+messages without negotiation.
+
+Nodes advertising this feature SHOULD send the BIP 434 `feature` message with
+the `staletip` feature id and feature data defined above before sending their
+`verack` message.
+
+Advertising the feature only signals willingness to receive `staletip` messages.
+It does not oblige a node to send them or to serve block data. A node MAY
+advertise the feature to receive stale tips while never sending any itself, for
+example a node that only collects stale tips for research.
 
 ### The `staletip` Message
 
@@ -123,7 +156,7 @@ recent stale tips they are aware of. If so,
 
 - Nodes SHOULD send `staletip` messages advertising recent stale tips
   that they are aware of to peers that support the `staletip` feature.
-- `staletip` messages SHOULD NOT be sent to peers that have not indicated
+- `staletip` messages MUST NOT be sent to peers that have not indicated
   support for the `staletip` feature.
 - Nodes SHOULD NOT advertise stale tips that violate header consensus rules
   (invalid version, invalid timestamps, invalid difficulty changes,
@@ -163,9 +196,6 @@ recent stale tips they are aware of. If so,
 Nodes implementing this BIP MAY process `staletip` messages from peers
 to gain more knowledge about stale tips. If so,
 
-- Nodes SHOULD advertise support for the feature, by sending the `feature`
-  message with the `staletip` feature id and feature data as defined above,
-  prior to sending the `verack` message.
 - Nodes SHOULD reject (ignore) `staletip` messages where the `fork_point` is
   not known, and MAY disconnect the sending peer if this occurs. (Note
   that it was specified above that the sending peer MUST be sure the
