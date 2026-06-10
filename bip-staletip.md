@@ -257,6 +257,9 @@ more knowledge about stale tips. If so:
   message for the reconstructed stale tip block hash.
 - Nodes that receive a new stale tip SHOULD announce that tip to their peers
   that negotiated the `staletip` feature, subject to local relay policy.
+  Nodes SHOULD NOT announce the same stale tip to the same peer mode than
+  once, and SHOULD NOT announce a stale tip to a peer from which they have
+  already received an announcement of that tip.
 
 Nodes in initial block download SHOULD NOT announce stale tips, and MAY ignore
 received `staletip` messages, until they are close enough to the active network
