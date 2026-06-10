@@ -98,7 +98,7 @@ than `\x00` or `\x01`, MUST ignore that peer's `staletip` feature
 advertisement. They SHOULD NOT disconnect solely because the feature data is not
 understood.
 
-For future compatibility, nodes SHOULD ignore any additional feature data bytes
+For future compatibility, nodes MUST ignore any additional feature data bytes
 after the first byte.
 
 ### BIP 434 Negotiation
