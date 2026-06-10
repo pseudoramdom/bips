@@ -23,11 +23,11 @@ is willing to serve the corresponding tip block data.
 Being aware of stale blocks can be useful in ensuring the health of the Bitcoin
 network.
 
-The most immediate and practical benefit is that when there is a stale block
+The most direct and practical benefit is that when there is a stale block
 with the same cumulative proof of work as the current active tip, there is the
 potential for the current active tip to be reorged out in favour of a child of
-the stale block. In this case, having the stale branch already downloaded will
-make dealing with the reorg faster.
+the stale block. In this case, nodes that have already downloaded the stale
+branch can handle the reorg faster.
 
 A more long term benefit of tracking stale blocks is that it allows for an
 indirect measurement of the efficiency with which miners are able to update to a
