@@ -226,9 +226,10 @@ more knowledge about stale tips. If so:
   truncated data, invalid boolean values, or trailing bytes. Nodes MAY
   disconnect peers for malformed payloads.
 - Nodes SHOULD reject (ignore) `staletip` messages where the `fork_point` is
-  not known, and MAY disconnect the sending peer if this occurs. Sending such a
-  message violates the requirement above that senders MUST NOT send `staletip`
-  messages unless they are sure the receiver knows the `fork_point` block.
+  not known, and MAY disconnect peers that repeatedly send unknown fork points. 
+  Sending such a message violates the requirement above that senders MUST NOT 
+  send `staletip` messages unless they are sure the receiver knows the 
+  `fork_point` block.
 - Nodes SHOULD reject messages where the `headers` vector is empty, and MAY
   disconnect the sending peer if this occurs.
 - When processing a `staletip` message, nodes MUST bound the resources they
