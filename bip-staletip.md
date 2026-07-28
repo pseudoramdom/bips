@@ -20,22 +20,17 @@ is willing to serve corresponding stale block data.
 
 ## Motivation
 
-Being aware of stale blocks can be useful in ensuring the health of the Bitcoin
-network.
+Stale blocks are a potentially useful signal about the health of the network's
+block-relay layer. The rate at which they occur tracks how quickly new blocks
+reach the rest of the miners, and an elevated rate can be a symptom of a range
+of network-related problems – degraded or congested propagation, network
+partitions, or adversarial mining behavior such as selfish mining.
 
-The most direct and practical benefit is that when there is a stale block
-with the same cumulative proof of work as the current active tip, there is the
-potential for the current active tip to be reorged out in favour of a child of
-the stale block. In this case, nodes that have already downloaded the stale
-branch can handle the reorg faster.
-
-A more long term benefit of tracking stale blocks is that it allows for an
-indirect measurement of the efficiency with which miners are able to update to a
-new tip. Slower updates to new tips will result in more stale blocks. If block
-data is available, it also permits measurement of differences in block creation
-policy between mining pools, because the contents of stale blocks tend to show
-how similar or different the mining pools' mempools were when the blocks were
-found.
+An added benefit is that when a stale block has the same cumulative proof of
+work as the active tip, the current active tip may be re-orged out in favor of a 
+child of the stale block; having the block already downloaded (and possibly already
+validated) makes the reorg faster. The contents of stale blocks additionally
+reveal differences in block-creation policy between mining pools.
 
 These benefits are not essential to the operation of the Bitcoin network, so
 this is proposed as an optional feature, with low performance demands and strict
