@@ -3,6 +3,8 @@
   Layer: Peer Services
   Title: Stale Tip Relay
   Authors: Anthony Towns <aj@erisian.com.au>
+           w0xlt <woxlt.dev@gmail.com>
+           Ram <pseudoramdom@proton.me>
   Status: Draft
   Type: Specification
   Assigned: ?
